@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func UserControllerShow(c *fiber.Ctx) error {
-
 	var users []entity.User
 	err := database.DB.Find(&users).Error
 	if err != nil {
@@ -21,7 +21,6 @@ func UserControllerShow(c *fiber.Ctx) error {
 }
 
 func UserControllerCreate(c *fiber.Ctx) error {
-
 	user := new(req.UserReq)
 	if err := c.BodyParser(user); err != nil {
 		return err
@@ -41,11 +40,25 @@ func UserControllerCreate(c *fiber.Ctx) error {
 		})
 	}
 
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash password",
+		})
+	}
+
+	hashedPasswordConfirmation, err := bcrypt.GenerateFromPassword([]byte(user.PasswordConfirmation), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash password",
+		})
+	}
+
 	newUser := entity.User{
 		Name:                 user.Name,
 		Email:                user.Email,
-		Password:             user.Password,
-		PasswordConfirmation: user.PasswordConfirmation,
+		Password:             string(hashedPassword),
+		PasswordConfirmation: string(hashedPasswordConfirmation),
 	}
 
 	if err := database.DB.Create(&newUser).Error; err != nil {
@@ -54,15 +67,13 @@ func UserControllerCreate(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(fiber.Map{
-		"message": "Succes create new user",
+		"message": "Success create new user",
 		"data":    newUser,
 	})
 }
 
 func UserControllerDelete(c *fiber.Ctx) error {
-
 	id := c.Params("id")
-
 	var users []entity.User
 	if err := database.DB.First(&users, id).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -77,7 +88,7 @@ func UserControllerDelete(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Sucess delete users",
+		"message": "Success delete users",
 	})
 }
 
@@ -98,10 +109,30 @@ func UserControllerUpdate(c *fiber.Ctx) error {
 		})
 	}
 
+	if users.Password != users.PasswordConfirmation {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"message": "Password and password confirmation don't match",
+		})
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(users.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash password",
+		})
+	}
+
+	hashedPasswordConfirmation, err := bcrypt.GenerateFromPassword([]byte(user.PasswordConfirmation), bcrypt.DefaultCost)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "Failed to hash password",
+		})
+	}
+
 	user.Name = users.Name
 	user.Email = users.Email
-	user.Password = users.Password
-	user.PasswordConfirmation = users.PasswordConfirmation
+	user.Password = string(hashedPassword)
+	user.PasswordConfirmation = string(hashedPasswordConfirmation)
 
 	if err := database.DB.Save(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
